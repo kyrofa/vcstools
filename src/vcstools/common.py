@@ -47,14 +47,14 @@ import signal
 try:
     # py3k
     from urllib.request import urlopen, HTTPPasswordMgrWithDefaultRealm, \
-        HTTPBasicAuthHandler, build_opener
+        HTTPBasicAuthHandler, build_opener, Request
     from urllib.parse import urlparse
     from queue import Queue
 except ImportError:
     # py2.7
     from urlparse import urlparse
     from urllib2 import urlopen, HTTPPasswordMgrWithDefaultRealm, \
-        HTTPBasicAuthHandler, build_opener
+        HTTPBasicAuthHandler, build_opener, Request
     from Queue import Queue
 
 from vcstools.vcs_base import VcsError
@@ -79,7 +79,7 @@ def ensure_dir_notexists(path):
 
 def urlopen_netrc(uri, *args, **kwargs):
     '''
-    wrapper to urlopen, using netrc on 401 as fallback
+    wrapper to urlopen, using netrc on 401/404 as fallback
     Since this wraps both python2 and python3 urlopen, accepted arguments vary
 
     :returns: file-like object as urllib.urlopen
@@ -88,7 +88,7 @@ def urlopen_netrc(uri, *args, **kwargs):
     try:
         return urlopen(uri, *args, **kwargs)
     except IOError as ioe:
-        if hasattr(ioe, 'code') and ioe.code == 401:
+        if hasattr(ioe, 'code') and ioe.code in (401, 404):
             # 401 means authentication required, we try netrc credentials
             result = _netrc_open(uri)
             if result is not None:
@@ -153,6 +153,10 @@ def _netrc_open(uri, filename=None):
                 authhandler = HTTPBasicAuthHandler(pass_man)
                 opener = build_opener(authhandler)
                 return opener.open(uri)
+            elif password:
+                request = Request(uri)
+                request.add_header('PRIVATE-TOKEN', password)
+                return urlopen(request)
         else:
             # caught below, like other netrc parse errors
             raise netrc.NetrcParseError('No authenticators for "%s"' % machine)
